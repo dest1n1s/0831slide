@@ -11,11 +11,10 @@
   aspect-ratio: "16-9",
   footer: self => self.info.title,
   config-info(
-    title: [Sparsity in Deep Learning],
-    subtitle: [Pruning and growth for efficient inference and training in neural networks],
+    title: [Trace Is the Interface],
+    subtitle: [A Unified System in Post-Training],
     author: [
-      #box[Torsten Hoefler] #h(1em) #box[Dan Alistarh] #h(1em) #box[Tal Ben-Nun]
-      #h(1em) #box[Nikoli Dryden] #h(1em) #box[Alexandra Peste]
+      #box[葛煦旸]
     ],
   ),
   config-colors(
@@ -30,7 +29,7 @@
 
 #[
   #set text(size: 22pt)
-  #title-slide(title: text(size: 1.5em)[Sparsity in Deep Learning])
+  #title-slide(title: text(size: 1.5em)[Trace Is the Interface])
 ]
 
 == Model Compression Techniques
