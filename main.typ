@@ -9,13 +9,14 @@
 
 #show: metropolis-theme.with(
   aspect-ratio: "16-9",
-  footer: self => self.info.title,
+  align: top,
   config-info(
     title: [Trace Is the Interface],
     subtitle: [A Unified Paradigm in Industrialized Post-Training System],
     author: [
       #box[葛煦旸]
     ],
+    date: datetime.today(),
   ),
   config-colors(
     primary: rgb("#1d6fa5"),
@@ -48,9 +49,10 @@
     ]
     place(bottom + left, dy: 0.5em)[
       #set text(size: 0.9em)
+      #let dim = self.colors.neutral-lightest.darken(20%)
       #info.author
-      #if info.institution != none [ \ #text(size: 0.85em, fill: self.colors.neutral-lightest.darken(20%), info.institution) ]
-      #if info.date != none [ \ #text(size: 0.85em, fill: self.colors.neutral-lightest.darken(20%), utils.display-info-date(self)) ]
+      #if info.date != none [ #h(0.8em) #text(fill: dim)[·] #h(0.8em) #text(fill: dim, utils.display-info-date(self)) ]
+      #if info.institution != none [ \ #text(size: 0.85em, fill: dim, info.institution) ]
     ]
   }
   touying-slide(self: self, body)
