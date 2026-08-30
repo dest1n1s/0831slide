@@ -27,10 +27,36 @@
   ),
 )
 
-#[
-  #set text(size: 22pt)
-  #title-slide(title: text(size: 1.5em)[Trace Is the Interface])
-]
+#let cover-slide = touying-slide-wrapper(self => {
+  self = utils.merge-dicts(
+    self,
+    config-common(freeze-slide-counter: true),
+    config-page(fill: self.colors.secondary, margin: (x: 3em, top: 2.5em, bottom: 2em)),
+  )
+  let info = self.info
+  let accent = self.colors.primary.lighten(45%)
+  let body = {
+    set text(fill: self.colors.neutral-lightest)
+    place(top + right, dx: 1.5em, dy: -1em, circle(radius: 6em, fill: white.transparentize(94%)))
+    place(top + right, dx: -7em, dy: 6em, circle(radius: 3.2em, fill: accent.transparentize(80%)))
+    align(left + horizon)[
+      #block(spacing: 0pt, line(length: 3em, stroke: 4pt + accent))
+      #v(1em)
+      #text(size: 2.6em, weight: "bold", info.title)
+      #v(0.1em)
+      #text(size: 1.15em, fill: self.colors.neutral-lightest.darken(15%), info.subtitle)
+    ]
+    place(bottom + left, dy: 0.5em)[
+      #set text(size: 0.9em)
+      #info.author
+      #if info.institution != none [ \ #text(size: 0.85em, fill: self.colors.neutral-lightest.darken(20%), info.institution) ]
+      #if info.date != none [ \ #text(size: 0.85em, fill: self.colors.neutral-lightest.darken(20%), utils.display-info-date(self)) ]
+    ]
+  }
+  touying-slide(self: self, body)
+})
+
+#cover-slide
 
 == Model Compression Techniques
 
