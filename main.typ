@@ -156,9 +156,17 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
 
 == RL System
 
-#image("verl.png")
-
-#image("slime.png")
+#grid(
+  columns: (1fr, 1fr),
+  column-gutter: 1.5em,
+  row-gutter: 0.8em,
+  align: (bottom, bottom, top, top),
+  image("verl.png", height: 60%),
+  image("slime.png", width: 100%),
+  ..([*verl*: single-controller trainer over a colocated model engine and an AgentLoop + LLM-server rollout engine],
+     [*slime*: custom rollout generation on SGLang servers, decoupled from Megatron training by a data buffer],
+  ).map(c => align(center, text(size: 15pt, c))),
+)
 
 // == Accuracy/Performance v.s. Sparsity
 
