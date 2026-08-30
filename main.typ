@@ -11,7 +11,7 @@
   aspect-ratio: "16-9",
   config-info(
     title: [Trace Is the Interface],
-    subtitle: [A Unified Paradigm in Industrialized Post-Training System],
+    subtitle: [A Unified Paradigm for Industrialized Post-Training Systems],
     author: [
       #box[葛煦旸]
     ],
@@ -77,7 +77,7 @@
     cal(L)_"RFT" (theta) = - EE_(x tilde.op cal(D)) space ro(EE_(y tilde.op rq(pi_(theta_"old")) (dot | x))) [ rq(bb(1)[r(x, y) >= tau]) sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
   $
 
-Often, SFT also filters on rewards in the data pipeline, resulting in mixed effect with rejection sampling.
+In practice, SFT data pipelines often filter on rewards as well, blurring the line between SFT and rejection sampling.
 
 == Common Techniques in Post-Training
 
@@ -89,7 +89,7 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
     ]
   $
 
-  - Different algorithm leads to different masking $m^i_t$ and different estimation of $A^i_t$.
+  - Different algorithms lead to different masking $m^i_t$ and different estimates of $A^i_t$.
 
 - *OPD*
 
@@ -126,7 +126,7 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
     stroke: (x: none, y: 0.4pt + luma(160)),
     inset: 6pt,
     table.header([], [*SFT*], [*RFT*], [*RL*], [*OPD*], [*MOPD*]),
-    [*Trace* at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
+    [*Traces* at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
     [Sampling policy], [teacher], [student], [student], [student], [student],
     [Reward from a verifier], [?], [✓], [✓], [---], [---],
     [Exact tokens and log-probs], [---], [---], [✓], [✓], [✓],
@@ -143,15 +143,15 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
 ]
 
 #text(size: 20pt)[
-  - Long Running
-    - Typically 10min \~ 2h for SWE/Terminal tasks, based on task difficulty.
-    - For long-horizon tasks, this can reach even longer.
+  - Long-running
+    - Typically 10min \~ 2h for SWE/Terminal tasks, depending on task difficulty.
+    - For long-horizon tasks, episodes can run even longer.
   
     #align(center)[#image("long-horizon.png", height: 40%)]
   
   - Environment: Sandbox, Harness and Tools
     - Simple ReAct agents
-    - Harnessed: Multi-agent, subagents and compact
+    - Harnessed: multi-agent, subagents and compaction
 ]
 
 == RL System
@@ -168,14 +168,14 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
   ).map(c => align(center, text(size: 15pt, c))),
 )
 
-Representative of modern RL frameworks. Both have a controller over:
+Representative modern RL frameworks. Both run a controller over:
 
 - A *Training Engine* backed by Megatron-Core;
 - An *Inference Engine* backed by vLLM or SGLang.
 
 == RL System
 
-Rollout claims a far more complex and important position in the era of Agentic RL.
+Rollout takes on a far more complex and important role in the era of Agentic RL.
 
 #align(center)[#image("AvaCore System.png", height: 85%)]
 
@@ -186,35 +186,35 @@ Rollout claims a far more complex and important position in the era of Agentic R
 == Tokens-in, Tokens-out
 
 
-There\'re basically 3 forms of trace representing the same data:
+There are basically three forms of trace representing the same data:
 
 - *Chat messages:* `[{"role": "user", "content": "hi"}]`
-  - Public API/Harness interacts in this format.
+  - Public APIs and harnesses interact in this format.
 - *Templated string:* `"<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant"`
 - *Tokens:* `[151644, 872, 198, 6023, 151645, 198, 151644, 77091, 198]`
-  - Training Engine need this.
+  - The Training Engine needs this.
 
-Inference Engine like SGLang support both messages and tokens form.
+Inference Engines like SGLang support both the messages and the tokens form.
 
 == Tokens-in, Tokens-out
 
 #text(size: 20pt)[
-Transferring with *chat messages* breaks token identity: 
+Transferring *chat messages* breaks token identity: 
 
-- *Detokenize–retokenize drift:* Under BPE, it could happen that `encode(decode(y)) != y`.
+- *Detokenize–retokenize drift:* Under BPE, it can happen that `encode(decode(y)) != y`.
 - *Template pruning:* Reasoning templates erase earlier thinking spans before the last user turn.
-- *Lossy re-rendering:* Tool-call arguments <-> JSON round-trip drifts white-spaces.
+- *Lossy re-rendering:* The tool-call arguments <-> JSON round-trip drifts whitespace.
 
 *Solution:* Keep *tokens* as the source of truth.
 
-- No mature solution for *templated string -> chat messages* conversion.
+- No mature solution exists for the *templated string -> chat messages* conversion.
 ]
 
 == Trace Resolution in Black-box Harness
 
-Finding what *trace* a new *tool-call observation* or *assistant response* _continues_ is trivial in self-owned tool-call loop.
+Finding which *trace* a new *tool-call observation* or *assistant response* _continues_ is trivial in a self-owned tool-call loop.
 
-But what if the agent loop is owned by in-sandbox black-boxed harness?
+But what if the agent loop is owned by an in-sandbox, black-box harness?
 
 == Trace Resolution in Black-box Harness
 
@@ -223,7 +223,7 @@ But what if the agent loop is owned by in-sandbox black-boxed harness?
 #align(center)[#image("proxy.png", width: 70%)]
 
 - So the proxy has to decide, from the messages alone, *which recorded trace this request continues*.
-- A resolved continuation splices onto the stored token prefix and hits the KV cache; a miss re-encodes the whole history and form a wrong second trace.
+- A resolved continuation splices onto the stored token prefix and hits the KV cache; a miss re-encodes the whole history and creates a spurious second trace.
 
 == Trace Resolution in Black-box Harness
 
@@ -234,18 +234,18 @@ But what if the agent loop is owned by in-sandbox black-boxed harness?
 == Trace Resolution in Black-box Harness
 
 
-Typical harnesses will do at least all of the following actions:
+A typical harness performs at least the following actions:
 
 - *Normal:* Send *T2* after *[S1, U1, A1, T1, A2]*, waiting for *A3*;
 - *Subagent:* Launch a subagent, which is a brand-new conversation *[S1', U1', A1']*
-  - Based on settings, the harness could send a *T2* representing the launch of the subagent immediately, or wait till the subagent finishes.
-- *Compact:* Compact all previous history, and send a summary.
-- *Retry:* When facing network issues, it may also send *T1* again.
+  - Depending on settings, the harness may send a *T2* representing the subagent launch immediately, or wait until the subagent finishes.
+- *Compact:* Compact all previous history and send a summary.
+- *Retry:* On network issues, it may also send *T1* again.
 
 Some harnesses (like Claude Code) may also 
 
 - Drop previous tool responses;
-- *Send different random string before system prompt.* (cch=xxxxx)
+- *Send a different random string before the system prompt.* (cch=xxxxx)
 
 
 == Trace Resolution in Black-box Harness
@@ -253,20 +253,20 @@ Some harnesses (like Claude Code) may also
 *Solution:*
 
 - *Whitebox the harness:*
-  - For open-sourced harness (like Codex), we can modify the source code to ask it to *bring session ids*.
-  - Drop in-sandbox harness and use self-controlled loop.
+  - For an open-source harness (like Codex), we can modify the source code to make it *carry session ids*.
+  - Drop the in-sandbox harness and use a self-controlled loop.
 
 - *Heuristic prefix matching*
 
 == Stability and Observability
 
 #text(size: 20pt)[
-- Tremendous ongoing HTTP requests.
+- A tremendous number of concurrent HTTP requests.
   - Do not use `httpx.AsyncClient`!
-- *Retry* over HTTP requests, sandbox actions, and low-rewarded results.
-- *Concurrency control* over rollout tasks and resource acquision (like sandbox creation).
-- *Error transparency:* Faithfully record all errors, and panick at unexpected errors. Traces are saved eagerly to help find the cause of error.
-- *Resource lifecycle:* Release all resources in time. Allow cancellation of ongoing tasks.
+- *Retry* over HTTP requests, sandbox actions, and low-reward results.
+- *Concurrency control* over rollout tasks and resource acquisition (like sandbox creation).
+- *Error transparency:* Faithfully record all errors, and panic on unexpected ones. Traces are saved eagerly to help find the cause of errors.
+- *Resource lifecycle:* Release all resources promptly. Allow cancellation of ongoing tasks.
 - *Audit system:* LLM-based audit to analyze the failure mode of each trace (infra issue, model issue, reward hacking, etc.).
 ]
 
@@ -277,11 +277,11 @@ Some harnesses (like Claude Code) may also
 #set block(spacing: 0.7em)
 - *On-policy.* Rollout -> Train -> Rollout -> Train -> ...
 - *One-step off-policy*: Batch $k + 1$ is generated by $pi_k$ while step $k$ trains; staleness is exactly one step.
-- *Fully asynchronous (AReaL):* Rollout infinitely goes on, and training draws *traces* from rollout. Staleness is capped at $k$ (typically 8).
+- *Fully asynchronous (AReaL):* Rollout runs continuously, and training draws *traces* from it. Staleness is capped at $k$ (typically 8).
   $
     cal(L) = - EE_(y tilde.op pi_"behav") [ sum_t (pi_"prox" (y_t | dot)) / (pi_"behav" (y_t | dot)) dot min(rho_t hat(A)_t, op("clip")(rho_t, 1 - epsilon, 1 + epsilon) hat(A)_t) ], quad rho_t = (pi_theta (y_t | dot)) / (pi_"prox" (y_t | dot))
   $ #text(size: 0.75em, fill: gray)[Fu et al., _AReaL_, 2025;]
-  - Pipeline RL: Inflight weight updates.
+  - Pipeline RL: In-flight weight updates.
 ]
 
 == More Challenges
@@ -289,11 +289,11 @@ Some harnesses (like Claude Code) may also
 #text(size: 20pt)[
   
 *Scheduling: keep every resource busy*
-- Full usage of training GPUs, inference GPUs, and sandboxes.
-- KV Cache hit.
+- Full utilization of training GPUs, inference GPUs, and sandboxes.
+- KV-cache hit rate.
 ]
 
-== Convenient Usage
+== Ease of Use
 
 #grid(columns: (1.1fr, 1fr), gutter: 1.5em)[
   #show raw.where(block: true): set text(size: 9.5pt)
@@ -324,14 +324,11 @@ reference = "{{ answer }}"
   #show raw.where(block: true): set text(size: 13pt)
   ```sh
   avacore rollout run gpqa.toml
-  ```
 
-  #v(0.6em)
-
-  #show raw.where(block: true): set text(size: 13pt)
-  ```sh
-  avacore eval run gpqa.toml
+  avacore eval run http://localhost:30000 \
+    --benchmarks aime25,gpqa_diamond --resume
   ```
+  #text(size: 11pt, fill: gray)[eval: model and sampling from the endpoint and defaults; postgres from `$POSTGRES`]
 ]
 
 // == Accuracy/Performance v.s. Sparsity
