@@ -1,23 +1,36 @@
 #import "@preview/touying:0.6.1": *
-#import themes.simple: *
+#import themes.metropolis: *
 
 #set text(font: (
   (name: "libertinus serif", covers: "latin-in-cjk"),
   "Noto Serif CJK SC"
 ))
+#set par(justify: true)
 
-#show: simple-theme.with(
+#show: metropolis-theme.with(
   aspect-ratio: "16-9",
-  footer: [],
+  footer: self => self.info.title,
+  config-info(
+    title: [Sparsity in Deep Learning],
+    subtitle: [Pruning and growth for efficient inference and training in neural networks],
+    author: [
+      #box[Torsten Hoefler] #h(1em) #box[Dan Alistarh] #h(1em) #box[Tal Ben-Nun]
+      #h(1em) #box[Nikoli Dryden] #h(1em) #box[Alexandra Peste]
+    ],
+  ),
+  config-colors(
+    primary: rgb("#1d6fa5"),
+    primary-light: rgb("#c9dceb"),
+    secondary: rgb("#0f4c5c"),
+    neutral-lightest: rgb("#ffffff"),
+    neutral-dark: rgb("#0f4c5c"),
+    neutral-darkest: rgb("#1f2a2c"),
+  ),
 )
 
-#title-slide[
-  = Sparsity in Deep Learning
-  == Pruning and growth for efficient inference and training in neural networks
-  #v(2em)
-
-  Torsten Hoefler #h(1em) Dan Alistarh #h(1em) Tal Ben-Nun 
-  #h(1em) Nikoli Dryden #h(1em) Alexandra Peste
+#[
+  #set text(size: 22pt)
+  #title-slide(title: text(size: 1.5em)[Sparsity in Deep Learning])
 ]
 
 == Model Compression Techniques
