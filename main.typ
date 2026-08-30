@@ -126,7 +126,7 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
     stroke: (x: none, y: 0.4pt + luma(160)),
     inset: 6pt,
     table.header([], [*SFT*], [*RFT*], [*RL*], [*OPD*], [*MOPD*]),
-    [Generation at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
+    [*Trace* at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
     [Sampling policy], [teacher], [student], [student], [student], [student],
     [Reward from a verifier], [?], [✓], [✓], [---], [---],
     [Exact tokens and log-probs], [---], [---], [✓], [✓], [✓],
@@ -137,7 +137,7 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
 == Agentic RL
 
 #speaker-note[
-  在 Agentic
+  在 Agentic RL 的时代，Rollout 任务非常繁重。
   
   沙盒、Harness 生命周期的管理也为系统增加了挑战。
 ]
@@ -163,10 +163,15 @@ Often, SFT also filters on rewards in the data pipeline, resulting in mixed effe
   align: (bottom, bottom, top, top),
   image("verl.png", height: 60%),
   image("slime.png", width: 100%),
-  ..([*verl*: single-controller trainer over a colocated model engine and an AgentLoop + LLM-server rollout engine],
-     [*slime*: custom rollout generation on SGLang servers, decoupled from Megatron training by a data buffer],
+  ..([*verl*],
+     [*slime*],
   ).map(c => align(center, text(size: 15pt, c))),
 )
+
+Representative of modern RL frameworks. Both have a controller over:
+
+- A *Training Engine* backed by Megatron-Core;
+- An *Inference Engine* backed by vLLM or SGLang.
 
 // == Accuracy/Performance v.s. Sparsity
 
