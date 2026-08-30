@@ -173,6 +173,16 @@ Representative of modern RL frameworks. Both have a controller over:
 - A *Training Engine* backed by Megatron-Core;
 - An *Inference Engine* backed by vLLM or SGLang.
 
+== RL System
+
+Rollout becomes far more complex and important in the era of Agentic RL.
+
+
+== Token-in, Token-out
+
+== RL
+
+
 // == Accuracy/Performance v.s. Sparsity
 
 // #align(center)[#image("imgs/accuracy-performance-vs-sparsity.png", height: 50%)]
