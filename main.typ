@@ -12,7 +12,7 @@
   footer: self => self.info.title,
   config-info(
     title: [Trace Is the Interface],
-    subtitle: [A Unified System in Post-Training],
+    subtitle: [A Unified Paradigm in Industrialized Post-Training System],
     author: [
       #box[葛煦旸]
     ],
@@ -58,40 +58,67 @@
 
 #cover-slide
 
-== Model Compression Techniques
+== Background
 
-#align(center)[#image("imgs/model-compression.png", height: 84%)]
+Placeholder
 
-== Accuracy/Performance v.s. Sparsity
+== Common Techniques in Post-Training
 
-#align(center)[#image("imgs/accuracy-performance-vs-sparsity.png", height: 50%)]
+#let ro(body) = text(fill: rgb("#1e6b86"), body)          // produced by rollout
+#let rq(body) = text(fill: rgb("#b4471b"), body)          // new requirement vs. the previous loss
 
-#columns(2, gutter: 8pt)[
-  #text(16pt)[
-    - Accuracy
-      - Increases due to reduction of noise
-      - Then remains stable
-      - Eventually degrades
+
+- *SFT / Distillation*
+
+$
+  cal(L)_"SFT" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_"teacher") (dot | x)) [ sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
+$
+
+- *RFT (rejection sampling)*
+
+$
+  cal(L)_"RFT" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [ rq(bb(1)[r(x, y) >= tau]) sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
+$
+
+- *RL*
+
+$
+  cal(L)_"RL" (theta) = - EE_(x tilde.op cal(D)) space EE_({ro(y^i)}_(i=1)^G ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [
+    1/G sum_(i=1)^G sum_(t in cal(G)(y)) rq(m^i_t A^i_t) log pi_theta (y_t | x, y_(<t))
   ]
+$
 
 
-  #colbreak()
+// == Accuracy/Performance v.s. Sparsity
 
-  #text(16pt)[
-    - Computational Performance
-      - Initially grows slowly due to overheads in storing sparse structures and controlling sparse computations
-      - Then sustained growth
-  ]
-]
+// #align(center)[#image("imgs/accuracy-performance-vs-sparsity.png", height: 50%)]
 
-== Sparse Storage Format
+// #columns(2, gutter: 8pt)[
+//   #text(16pt)[
+//     - Accuracy
+//       - Increases due to reduction of noise
+//       - Then remains stable
+//       - Eventually degrades
+//   ]
 
-#align(center)[#image("imgs/sparse-storage.png")]
 
-#text(15pt)[
-  For $m lt.eq n$ elements in a space of $n$ elements:
-  - *Bitmap (BM)*: Stores a map with $n$ bits, each bit indicating whether an element is present. Requires $o=n$ additional bits.
-  - *Runlength encoding*: Stores difference of neighboring element indices. Requires $o=m ceil.l log_2 hat(d) ceil.r$, where $hat(d)$ is maximum difference of neighboring element indices.
-  - *Compressed Sparse Row (CSR)*: Represents indices in $n_c times n_r$ matrix using column and row index arrays. Requires $o=m ceil.l log_2 n_c ceil.r + n_r ceil.l log_2 m ceil.r$.
-  - *Coordinate Offset (COO)*: Stores each non-zero element together with its absolute offset. Requires $o=m ceil.l log_2 n ceil.r$.
-]
+//   #colbreak()
+
+//   #text(16pt)[
+//     - Computational Performance
+//       - Initially grows slowly due to overheads in storing sparse structures and controlling sparse computations
+//       - Then sustained growth
+//   ]
+// ]
+
+// == Sparse Storage Format
+
+// #align(center)[#image("imgs/sparse-storage.png")]
+
+// #text(15pt)[
+//   For $m lt.eq n$ elements in a space of $n$ elements:
+//   - *Bitmap (BM)*: Stores a map with $n$ bits, each bit indicating whether an element is present. Requires $o=n$ additional bits.
+//   - *Runlength encoding*: Stores difference of neighboring element indices. Requires $o=m ceil.l log_2 hat(d) ceil.r$, where $hat(d)$ is maximum difference of neighboring element indices.
+//   - *Compressed Sparse Row (CSR)*: Represents indices in $n_c times n_r$ matrix using column and row index arrays. Requires $o=m ceil.l log_2 n_c ceil.r + n_r ceil.l log_2 m ceil.r$.
+//   - *Coordinate Offset (COO)*: Stores each non-zero element together with its absolute offset. Requires $o=m ceil.l log_2 n ceil.r$.
+// ]
