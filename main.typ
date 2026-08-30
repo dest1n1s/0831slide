@@ -1,4 +1,4 @@
-#import "@preview/touying:0.6.1": *
+#import "@preview/touying:0.7.4": *
 #import themes.metropolis: *
 
 #set text(font: (
@@ -9,14 +9,13 @@
 
 #show: metropolis-theme.with(
   aspect-ratio: "16-9",
-  align: top,
   config-info(
     title: [Trace Is the Interface],
     subtitle: [A Unified Paradigm in Industrialized Post-Training System],
     author: [
       #box[葛煦旸]
     ],
-    date: datetime.today(),
+    date: [#box[08-31]],
   ),
   config-colors(
     primary: rgb("#1d6fa5"),
@@ -60,130 +59,106 @@
 
 #cover-slide
 
-== Background: Post-Training Is Rollout-Bound
-
-- Every technique in use consumes *samples from a model*: SFT on synthesized or distilled data, rejection fine-tuning, RL, on-policy distillation.
-- Rollout dominates the step: 50–80% of RL step time (DORA, 2026), over 80% on agentic workloads (Heddle, 2026).
-- A sample is no longer one response: multi-turn, tool calls, sandboxes, third-party harnesses (Claude Code, Codex, and others); one episode runs seconds to an hour.
-- Consumers disagree on what a sample *is*: text for SFT, token ids and masks for training, engine log-probs for RL, teacher log-probs for OPD, a reward for RFT and RL.
-
-== Motivation: One Rollout, Many Stacks
-
-#grid(columns: (1fr, 1fr), gutter: 1.5em)[
-  *State of practice*
-  - Each technique ships its own stack: eval harness, data-synthesis pipeline, RL trainer with a built-in rollout worker, distillation script.
-  - Each re-implements generation, chat-template rendering, the tool loop and storage — each with its own answer to _what a sample is_.
-][
-  *What it costs*
-  - Re-tokenised text silently turns on-policy training off-policy (Yao et al., 2025; Miles, 2026).
-  - The same benchmark, evaluated three ways, gives three numbers.
-  - A harness written for evaluation cannot be trained on.
-  - At around 10k in-flight requests the Python driver, not the inference server, is the ceiling.
-]
-
-== Thesis: The Trace Is the Interface
-
-- Record once, at the LLM endpoint: the exact token ids the engine consumed and produced, the generated-position mask, log-probs, and the messages they render to.
-- Every consumer reads the same artifact — evaluation scores it, SFT trains on it, RFT filters it, RL reuses its log-probs, OPD has a teacher score it.
-
-#v(1em)
-#let bx(body) = box(inset: (x: 0.8em, y: 0.5em), radius: 4pt, stroke: 1pt + rgb("#1d6fa5"), body)
-#align(center)[
-  #bx[Harness] #h(0.6em) #sym.arrow.r #h(0.6em) #bx[Endpoint proxy] #h(0.6em) #sym.arrow.r #h(0.6em) #bx[*Trace*] #h(0.6em) #sym.arrow.r #h(0.6em) #bx[Eval · SFT · RFT · RL · OPD]
-]
-#v(0.8em)
-- The stacks collapse into one rollout layer; the differences between techniques become differences in what they *read* from the trace.
-
 == Common Techniques in Post-Training
 
-#let ro(body) = text(fill: rgb("#1e6b86"), body)          // produced by rollout
+#let ro(body) = text(fill: rgb("#1e6b86"), weight: "bold", body)          // produced by rollout
 #let rq(body) = text(fill: rgb("#b4471b"), body)          // new requirement vs. the previous loss
 
 
 - *SFT / Distillation*
 
-$
-  cal(L)_"SFT" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_"teacher") (dot | x)) [ sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
-$
+  $
+    cal(L)_"SFT" (theta) = - EE_(x tilde.op cal(D)) space ro(EE_(y tilde.op rq(pi_"teacher") (dot | x))) [ sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
+  $
 
 - *RFT (rejection sampling)*
 
-$
-  cal(L)_"RFT" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [ rq(bb(1)[r(x, y) >= tau]) sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
-$
+  $
+    cal(L)_"RFT" (theta) = - EE_(x tilde.op cal(D)) space ro(EE_(y tilde.op rq(pi_(theta_"old")) (dot | x))) [ rq(bb(1)[r(x, y) >= tau]) sum_(t in cal(G)(y)) log pi_theta (y_t | x, y_(<t)) ]
+  $
+
+Often, SFT also filters on rewards in the data pipeline, resulting in mixed effect with rejection sampling.
+
+== Common Techniques in Post-Training
 
 - *RL*
 
-$
-  cal(L)_"RL" (theta) = - EE_(x tilde.op cal(D)) space EE_({ro(y^i)}_(i=1)^G ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [
-    1/G sum_(i=1)^G sum_(t in cal(G)(y^i)) rq(m^i_t A^i_t) log pi_theta (y^i_t | x, y^i_(<t))
-  ]
-$
+  $
+    cal(L)_"RL" (theta) = - EE_(x tilde.op cal(D)) space ro(EE_({y^i}_(i=1)^G tilde.op rq(pi_(theta_"old")) (dot | x))) [
+      1/G sum_(i=1)^G sum_(t in cal(G)(y^i)) rq(m^i_t hat(A)^i_t) log pi_theta (y^i_t | x, y^i_(<t))
+    ]
+  $
 
+  - Different algorithm leads to different masking $m^i_t$ and different estimation of $A^i_t$.
 
-== On-Policy Distillation
+- *OPD*
 
-- *OPD* — the student samples, the teacher scores every token it sampled
+  $
+    hat(A)_t = op("sg")[log pi_"teacher" (y_t | x, y_(<t)) - log pi_(theta_"old") (y_t | x, y_(<t))]
+  $
+  $
+    cal(L)_"OPD" (theta) = - EE_(x tilde.op cal(D)) space ro(EE_(ro(y) ro(tilde.op) rq(pi_(theta_"old")) (dot | x))) [ sum_(t in cal(G)(y)) rq(hat(A)_t) log pi_theta (y_t | x, y_(<t)) ]
+  $
 
-$
-  hat(A)_t = op("sg")[log pi_"teacher" (y_t | x, y_(<t)) - log pi_(theta_"old") (y_t | x, y_(<t))]
-$
-$
-  cal(L)_"OPD" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [ sum_(t in cal(G)(y)) rq(hat(A)_t) log pi_theta (y_t | x, y_(<t)) ]
-$
+  - MOPD uses multiple models for $pi_"teacher"$.
 
-#[
-#set text(size: 0.8em)
-#set par(justify: false)
-#grid(columns: (1fr, 1fr), gutter: 1.5em)[
-  *SFT* — off-policy
-  - $y tilde.op pi_"teacher"$: learns on states the teacher visits; errors compound once the student leaves them
-  - target = the teacher token; $approx nabla op("KL")(pi_"teacher" || pi_theta)$, mass-covering
-  - rollout: teacher generation, text suffices
-][
-  *OPD* — on-policy
-  - $y tilde.op pi_theta$: learns on its own states
-  - signal = teacher log-prob of the student token, dense; $= nabla op("KL")(pi_theta || pi_"teacher")$, mode-seeking — RL whose reward needs no verifier
-  - rollout: student generation *and* a teacher scoring pass on the exact token ids
-]
-]
-#text(size: 0.8em, fill: gray)[Agarwal et al., GKD, 2023; Thinking Machines, _On-Policy Distillation_, 2025: 9–30× cheaper than SFT distillation to the same reasoning score]
-
-== Multi-Teacher On-Policy Distillation
-
-- *MOPD* — one student, a frozen expert teacher $phi_d$ per domain, each trained by RL on its own task; the domain $d(x)$ of the prompt picks the teacher
-
-$
-  hat(A)_t = op("sg")[log pi_(phi_(d(x))) (y_t | x, y_(<t)) - log pi_(theta_"old") (y_t | x, y_(<t))] + alpha hat(A)_"ORM"
-$
-$
-  cal(L)_"MOPD" (theta) = - EE_(x tilde.op cal(D)) space EE_(ro(y) ro(tilde.op) rq(pi_(theta_"old")) (dot | x)) [ sum_(t in cal(G)(y)) rq(hat(A)_t) log pi_theta (y_t | x, y_(<t)) ]
-$
-
-- Teachers are developed in parallel and never merged; the student integrates them without the see-saw of sequential multi-domain RL
-- Rollout adds to OPD: one scoring endpoint per teacher, a router from prompt to teacher, and with $alpha > 0$ the verifier as well; the trace must record which teacher scored it
-
-#text(size: 0.7em, fill: gray)[MiMo-V2-Flash (Xiaomi, 2026), with the $alpha hat(A)_"ORM"$ term; Ma et al., _MOPD_, 2026: pure routing, $alpha = 0$]
+// #text(size: 0.8em, fill: gray)[Agarwal et al., GKD, 2023; Thinking Machines, _On-Policy Distillation_, 2025: 9–30× cheaper than SFT distillation to the same reasoning score]
 
 == What Each Technique Needs from Rollout
 
-#set text(size: 15pt)
-#set par(justify: false)
-#table(
-  columns: (auto, 1fr, 1fr, 1fr, 1fr, 1.4fr),
-  align: (left, center, center, center, center, center),
-  stroke: (x: none, y: 0.4pt + luma(160)),
-  inset: 6pt,
-  table.header([], [*SFT*], [*RFT*], [*RL*], [*OPD*], [*MOPD*]),
-  [Generation at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
-  [Token ids in the student tokenizer, generated-position mask], [✓], [✓], [✓], [✓], [✓],
-  [Samples from the policy under training], [teacher], [✓], [✓], [✓], [✓],
-  [Reward from a verifier or environment], [—], [✓], [✓], [—], [$alpha > 0$],
-  [Engine log-probs on the exact sampled tokens], [—], [—], [✓], [✓], [✓],
-  [Log-probs of a second model on those tokens (scoring pass)], [—], [—], [—], [1 teacher], [$N$ teachers + router],
-  [Policy freshness: $theta_"old" approx theta$], [—], [—], [✓], [✓], [✓],
-)
+#speaker-note[
+  所有算法都需要 Generation
 
+  SFT 的采样模型不同
+
+  多数时候我们会希望有 reward，即使算法不需要
+
+  RL 需要 TITO。在文本模态下保证 token 一致是很困难的事情。BPE。
+
+  RL 的采样模型和训练模型需要尽可能接近。这需要 rollout 具有足够高的效率。
+]
+
+#text(size: 16pt)[
+  #set par(justify: false)
+  #table(
+    columns: (auto, 1fr, 1fr, 1fr, 1fr, 1.4fr),
+    align: (left, center, center, center, center, center),
+    stroke: (x: none, y: 0.4pt + luma(160)),
+    inset: 6pt,
+    table.header([], [*SFT*], [*RFT*], [*RL*], [*OPD*], [*MOPD*]),
+    [Generation at scale, long-tailed episodes], [✓], [✓], [✓], [✓], [✓],
+    [Sampling policy], [teacher], [student], [student], [student], [student],
+    [Reward from a verifier], [?], [✓], [✓], [---], [---],
+    [Exact tokens and log-probs], [---], [---], [✓], [✓], [✓],
+    [Policy freshness: $theta_"old" approx theta$], [---], [---], [✓], [✓], [✓],
+  )
+]
+
+== Agentic RL
+
+#speaker-note[
+  在 Agentic
+  
+  沙盒、Harness 生命周期的管理也为系统增加了挑战。
+]
+
+#text(size: 20pt)[
+  - Long Running
+    - Typically 10min \~ 2h for SWE/Terminal tasks, based on task difficulty.
+    - For long-horizon tasks, this can reach even longer.
+  
+    #align(center)[#image("long-horizon.png", height: 40%)]
+  
+  - Environment: Sandbox, Harness and Tools
+    - Simple ReAct agents
+    - Harnessed: Multi-agent, subagents and compact
+]
+
+== RL System
+
+#image("verl.png")
+
+#image("slime.png")
 
 // == Accuracy/Performance v.s. Sparsity
 
