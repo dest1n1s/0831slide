@@ -198,18 +198,16 @@ Inference Engine like SGLang support both messages and tokens form.
 
 == Tokens-in, Tokens-out
 
-#text(size: 16pt)[
-Going through text breaks the token stream the policy actually sampled — silently: the text reads the same, the log-probs belong to a different sequence, and on-policy training has become off-policy.
+#text(size: 20pt)[
+Transferring with *chat messages* breaks token identity: 
 
-- *Detokenize–retokenize drift:* BPE admits many encodings of one string and the sample need not be the canonical one, so `encode(decode(y)) != y`.
-- *Template pruning:* reasoning templates erase earlier thinking spans before the last user turn — training sees a history the model never conditioned on.
-- *Lossy re-rendering:* tool-call arguments round-trip through JSON; whitespace and key order drift, and so do the ids.
+- *Detokenize–retokenize drift:* Under BPE, it could happen that `encode(decode(y)) != y`.
+- *Template pruning:* Reasoning templates erase earlier thinking spans before the last user turn.
+- *Lossy re-rendering:* Tool-call arguments <-> JSON round-trip drifts white-spaces.
 
-*Invariant:* prompt + response of turn $n - 1$ is a bit-exact prefix of the prompt of turn $n$. AvaCore keeps the trace as tokens:
+*Solution:* Keep *tokens* as the source of truth.
 
-- `TokenTrace` is a sequence of `ChatSegment`s — `tokens`, `is_generated`, `log_probs`, and the `message_attrs` the template drops (tool-call ids, names, reasoning signature); `tokens`, `loss_mask`, `log_probs` are flattened views, never re-encoded.
-- Extending renders only the appended messages behind a guard prefix and splices the delta onto the stored ids; a truncated turn gets its missing terminator repaired on the next extend.
-- Messages are *derived*: decode $arrow.r$ `Parser.parse` $arrow.r$ `restore(message_attrs)`, asserted equal to what was stored; `trace.tokens == encode(trace.template)` holds after a multi-turn tool rollout.
+- No mature solution for *templated string -> chat messages* conversion.
 ]
 
 == Trace Resolution in Black-box Harness
@@ -221,12 +219,11 @@ But what if the agent loop is owned by in-sandbox black-boxed harness?
 == Trace Resolution in Black-box Harness
 
 - The harness runs *inside the sandbox* and speaks a stateless OpenAI-compatible API: every request carries its whole message history, and nothing identifies the conversation it belongs to.
-- AvaCore fronts the inference engine with one `OpenAIProxy` and one `TraceStore` per rollout. Per request:
 
-  #align(center)[resolve $arrow.r$ extend the matched trace $arrow.r$ `client.step` (SGLang, tokens) $arrow.r$ commit]
+#align(center)[#image("proxy.png", width: 70%)]
 
 - So the proxy has to decide, from the messages alone, *which recorded trace this request continues*.
-- The answer decides whether TITO survives the turn: a resolved continuation splices onto the stored token prefix and hits the KV cache; a miss re-encodes the whole history from text.
+- A resolved continuation splices onto the stored token prefix and hits the KV cache; a miss re-encodes the whole history and form a wrong second trace.
 
 == Trace Resolution in Black-box Harness
 
@@ -253,93 +250,47 @@ Some harnesses (like Claude Code) may also
 
 == Trace Resolution in Black-box Harness
 
-#text(size: 15pt)[
-- Two messages *match* when role and `tool_call_id` agree and either their tool-call ids are equal or their text is — exactly, or within a `SequenceMatcher` ratio of 0.95.
-- A request *continues* a trace when every stored position matches, in order; there is no realignment.
-- `resolve` tries every stored trace *and its one-step rollback* `query()` — the snapshot before the last generation — and takes the longest match; none means a new trace.
-- Each request commits twice, after its own messages are appended and after the reply, under one lock per proxy.
+*Solution:*
 
-#table(
-  columns: (auto, 1fr),
-  align: (left, left),
-  stroke: (x: none, y: 0.4pt + luma(160)),
-  inset: 5pt,
-  [*Normal*], [the full trace matches $arrow.r$ extend; new tokens splice onto the stored prefix],
-  [*Retry*], [matches the committed request, or its rollback if a reply was already produced $arrow.r$ regenerate once; the trace is replaced in place, never duplicated],
-  [*Subagent*], [no stored prefix $arrow.r$ a new trace; the main trace is the first one],
-  [*Compact*], [the summary matches nothing $arrow.r$ a new trace],
-  [*Dropped tool response*], [positions shift $arrow.r$ a new trace, re-encoded from text: TITO is lost on that branch],
-  [*Random `cch=` prefix*], [the system message stays within tolerance $arrow.r$ normal continuation],
-)
-]
+- *Whitebox the harness:*
+  - For open-sourced harness (like Codex), we can modify the source code to ask it to *bring session ids*.
+  - Drop in-sandbox harness and use self-controlled loop.
 
-== Stability
+- *Heuristic prefix matching*
 
-#text(size: 16pt)[
-- *Transport retry* — `HTTPRetry`: timeouts, connection errors, 408 / 409 / 425 / 429 / 5xx; exponential backoff 0.5 s $arrow.r$ 30 s; applied once at client construction, so the hot path has no policy branches.
-- *Failure carries its evidence* — exhausted retries raise `RetryExceeded`, an `ExceptionGroup` of every attempt: the sequence says what the server was doing when no single error would.
-- *Error budget* — `tolerating(stream, tolerance)`: a ratio per error type; crossing it raises `ErrorBudgetExceeded` and stops the run instead of quietly finishing with a half-empty dataset.
-- *Rollout retry policy* — `retry = "errors"` or `{kind = "unrewarded", min_score = 1.0}`; `recoverable` lists the exceptions that mean retry, everything else is a failed rollout.
-- *Lifecycle* — a sandbox `Runtime` is a context manager: `start`, graceful `stop`, unconditional `cleanup`; services (harness, tunnel) stack in an `AsyncExitStack`; a proxy failure is an event every awaiter of that rollout sees.
+== Stability and Observability
 
-```
-RetryExceeded: 4 attempts
-  +-- 1: ConnectError        connection refused
-  +-- 2: TimeoutException    read timeout after 30 s
-  +-- 3: HttpStatusError     503 Service Unavailable
-  +-- 4: HttpStatusError     503 Service Unavailable
-```
-]
-
-== Observability
-
-#text(size: 16pt)[
-- *Every rollout has a status* — `running / completed / verifying / rollout_error / verification_error`; the run goes `pending → running → recovering → finished | stopped | failed`.
-- *Partial updates* — a progress tick writes `status`, `score`, `samples` only; `size`, `trials`, `sampling_params`, `config` are set once by `run()` and never clobbered.
-- *Resume* — `generate.resuming(traces)` short-circuits every instance that already has a trace; `--resume` keeps the scored rollouts and retries the failed ones.
-- *Progress you can act on* — a periodic tick logs finished / expected, failures, score and the running-age p10 / p50 / p90 / p99: the long tail is visible while it happens.
-- *Harness logs* — every tool call and its output are recorded per rollout.
-- *SQL over traces* — `trace` and `reward` are Postgres composite types, not JSON:
-
-```sql
-SELECT (reward).score, ((trace).messages)[3].reasoning_content
-FROM samples
-WHERE run_id = 42 AND (reward).score < 0.5;
-```
+#text(size: 20pt)[
+- Tremendous ongoing HTTP requests.
+  - Do not use `httpx.AsyncClient`!
+- *Retry* over HTTP requests, sandbox actions, and low-rewarded results.
+- *Concurrency control* over rollout tasks and resource acquision (like sandbox creation).
+- *Error transparency:* Faithfully record all errors, and panick at unexpected errors. Traces are saved eagerly to help find the cause of error.
+- *Resource lifecycle:* Release all resources in time. Allow cancellation of ongoing tasks.
+- *Audit system:* LLM-based audit to analyze the failure mode of each trace (infra issue, model issue, reward hacking, etc.).
 ]
 
 == Asynchronous RL
 
-#text(size: 14pt)[
+#text(size: 20pt)[
 #set par(spacing: 0.7em)
 #set block(spacing: 0.7em)
-- *On-policy, synchronous* — generate a batch, train, sync weights. Every GPU waits for the slowest episode; at 10 min – 2 h per episode most of the step is idle.
-- *One-step off-policy* — batch $k + 1$ is generated by $pi_k$ while step $k$ trains; staleness is exactly one step and the PPO ratio $pi_theta \/ pi_"old"$ absorbs it.
-- *Fully asynchronous (AReaL)* — workers never stop; weights reload mid-generation, so one trajectory spans several policy versions. Staleness is bounded ($<= eta$) and the objective is *decoupled*: a proximal policy anchors the clipping, the behaviour policy is only an importance weight.
+- *On-policy.* Rollout -> Train -> Rollout -> Train -> ...
+- *One-step off-policy*: Batch $k + 1$ is generated by $pi_k$ while step $k$ trains; staleness is exactly one step.
+- *Fully asynchronous (AReaL):* Rollout infinitely goes on, and training draws *traces* from rollout. Staleness is capped at $k$ (typically 8).
   $
     cal(L) = - EE_(y tilde.op pi_"behav") [ sum_t (pi_"prox" (y_t | dot)) / (pi_"behav" (y_t | dot)) dot min(rho_t hat(A)_t, op("clip")(rho_t, 1 - epsilon, 1 + epsilon) hat(A)_t) ], quad rho_t = (pi_theta (y_t | dot)) / (pi_"prox" (y_t | dot))
-  $
-- *Even on-policy is off-policy* — inference and training engines compute $pi_"old"$ differently (kernels, precision, batching); TIS reweights each token by their truncated ratio:
-  $
-    w_t = min((pi_"train" (y_t | dot)) / (pi_"infer" (y_t | dot)), C), quad C approx 2
-  $
-- *What rollout must supply* — engine log-probs on the exact sampled tokens (TIS, every regime); the weight version behind every generated segment (async); a stream, not a batch. AvaCore records both per step and yields rollouts as they finish.
-
-#text(size: 0.75em, fill: gray)[Fu et al., _AReaL_, 2025; Yao et al., _Your Efficient RL Framework Secretly Brings You Off-Policy RL Training_, 2025]
+  $ #text(size: 0.75em, fill: gray)[Fu et al., _AReaL_, 2025;]
+  - Pipeline RL: Inflight weight updates.
 ]
 
 == More Challenges
 
-#text(size: 16pt)[
-*Resolution edge cases*
-- A dropped tool response or a compaction breaks the positional prefix: the branch restarts from text and loses its token prefix — recoverable only by matching at the token level instead of the message level.
-- _The first trace is the main one_ is a heuristic: OpenCode emits a title-generation conversation before the real one.
-- Harness nondeterminism (random `cch=` prefixes) is absorbed by tolerance today; every such tolerance trades resolution precision against KV-cache reuse.
-
-*Scheduling: every resource busy*
-- Three pools on different clocks: training GPUs (steps), inference GPUs (tokens), sandboxes (wall-clock, CPU, network). An episode holds its sandbox for the whole 10 min – 2 h, including the time it waits on the model.
-- Verification competes with rollout for the same sandboxes: prewarming, reuse and a verification queue decide whether inference or the sandbox pool is the bottleneck.
-- The long tail blocks the batch on its slowest episode; partial rollouts, interruptible generation and staleness-aware admission turn that idle time into throughput.
+#text(size: 20pt)[
+  
+*Scheduling: keep every resource busy*
+- Full usage of training GPUs, inference GPUs, and sandboxes.
+- KV Cache hit.
 ]
 
 == Convenient Usage
@@ -348,16 +299,12 @@ WHERE run_id = 42 AND (reward).score < 0.5;
   #show raw.where(block: true): set text(size: 9.5pt)
   #set par(spacing: 0.5em)
 ```toml
-[run]
-kind = "distillation"
-collection = "super_gpqa"
-resume = true
 [rollout]
-concurrency = 1200
+concurrency = 768
 retry = "unrewarded"
 [data]
 kind = "jsonl"
-path = "/mnt/data/super_gpqa.jsonl"
+path = "super_gpqa.jsonl"
 [generate]
 kind = "single_turn"
 instance.messages = [
@@ -365,27 +312,25 @@ instance.messages = [
   { role = "user", content = "{{ question }}\n{% for c in choices %}..." },
 ]
 [generate.model]
-endpoint = "http://localhost:30001"
-name = "Qwen/Qwen3.5-35B-A3B"
-concurrency = 1000
+endpoint = "http://localhost:30000"
+name = "Qwen3.5-35B-A3B"
 [reward]
 kind = "exact_match"
 format = '(?<=\\boxed\{)[A-Z]'
 reference = "{{ answer }}"
 ```
 ][
-  #set text(size: 13.5pt)
-  - `kind` names a registered class; the rest of the table is the fields of that class — there is no separate config schema.
-  - Strings are Jinja templates over the row; `{field = "answer"}` passes a value untouched; `{call = "file.py:fn"}` runs code. Logic never lives in TOML.
-  - `retry = "unrewarded"` re-rolls instances that produced no score; `resume = true` reopens the run.
-  - `[generate.model]` is one flat table: endpoint, retries, sampling params and the TokioPost `concurrency`.
-  - `${ENV}` anywhere in a string; the recorded config never contains a secret.
+  
+  #show raw.where(block: true): set text(size: 13pt)
+  ```sh
+  avacore rollout run gpqa.toml
+  ```
 
   #v(0.6em)
-  #show raw.where(block: true): set text(size: 11pt)
+
+  #show raw.where(block: true): set text(size: 13pt)
   ```sh
-  avacore rollout run gpqa.toml \
-    --postgres $POSTGRES --set run.trials=4
+  avacore eval run gpqa.toml
   ```
 ]
 
