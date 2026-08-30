@@ -175,12 +175,70 @@ Representative of modern RL frameworks. Both have a controller over:
 
 == RL System
 
-Rollout becomes far more complex and important in the era of Agentic RL.
+Rollout claims a far more complex and important position in the era of Agentic RL.
+
+#align(center)[#image("AvaCore System.png", height: 85%)]
+
+== RL System
+
+#align(center)[#image("AvaCore.png")]
+
+== Tokens-in, Tokens-out
 
 
-== Token-in, Token-out
+There\'re basically 3 forms of trace representing the same data:
 
-== RL
+- *Chat messages:* `[{"role": "user", "content": "hi"}]`
+  - Public API/Harness interacts in this format.
+- *Templated string:* `"<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant"`
+- *Tokens:* `[151644, 872, 198, 6023, 151645, 198, 151644, 77091, 198]`
+  - Training Engine need this.
+
+Inference Engine like SGLang support both messages and tokens form.
+
+
+== Trace Resolution in Black-box Harness
+
+Finding what *trace* a new *tool-call observation* or *assistant response* _continues_ is trivial in self-owned tool-call loop.
+
+But what if the agent loop is owned by in-sandbox black-boxed harness?
+
+
+
+== Trace Resolution in Black-box Harness
+
+#align(center)[#image("trace-resolution-1.png", width: 90%)]
+
+#align(center)[#image("trace-resolution-2.png", width: 90%)]
+
+== Trace Resolution in Black-box Harness
+
+
+Typical harnesses will do at least all of the following actions:
+
+- *Normal:* Send *T2* after *[S1, U1, A1, T1, A2]*, waiting for *A3*;
+- *Subagent:* Launch a subagent, which is a brand-new conversation *[S1', U1', A1']*
+  - Based on settings, the harness could send a *T2* representing the launch of the subagent immediately, or wait till the subagent finishes.
+- *Compact:* Compact all previous history, and send a summary.
+- *Retry:* When facing network issues, it may also send *T1* again.
+
+Some harnesses (like Claude Code) may also 
+
+- Drop previous tool responses;
+- *Send different random string before system prompt.* (cch=xxxxx)
+
+
+== Stability and Observability
+
+
+
+== Asynchronous RL
+
+
+== More Challenges
+
+
+== Convenient Usage
 
 
 // == Accuracy/Performance v.s. Sparsity
