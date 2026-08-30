@@ -196,6 +196,7 @@ There\'re basically 3 forms of trace representing the same data:
 
 Inference Engine like SGLang support both messages and tokens form.
 
+== Tokens-in, Tokens-out
 
 == Trace Resolution in Black-box Harness
 
@@ -203,6 +204,7 @@ Finding what *trace* a new *tool-call observation* or *assistant response* _cont
 
 But what if the agent loop is owned by in-sandbox black-boxed harness?
 
+== Trace Resolution in Black-box Harness
 
 
 == Trace Resolution in Black-box Harness
