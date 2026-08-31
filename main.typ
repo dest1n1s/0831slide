@@ -328,7 +328,6 @@ reference = "{{ answer }}"
   avacore eval run http://localhost:30000 \
     --benchmarks aime25,gpqa_diamond --resume
   ```
-  #text(size: 11pt, fill: gray)[eval: model and sampling from the endpoint and defaults; postgres from `$POSTGRES`]
 ]
 
 // == Accuracy/Performance v.s. Sparsity
