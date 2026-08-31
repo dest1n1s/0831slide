@@ -59,7 +59,24 @@
 
 #cover-slide
 
+#speaker-note[
+  大家好，我是24级的硕转博葛煦旸。我先简单介绍一下我自己吧。我在之前的两年中一直在做可解释性，围绕着 mechinterp 和 SAE 做了一系列回路分析和其他的工作。然后今年五月份，我从 ICLR 回来之后，正式转来做后训练。在这几个月中我也做过很多不同的事情，一开始是做评测，后来又去做 RL 和 MOPD，最后我们现在还是准备先上量做好蒸馏，所以我转来负责 Infra，负责整体系统设计上的一些问题。
+
+  其实我在做可解释性的时候就做过很多 Infra 的工作。我主要开发了一个 Llamascopium 框架，是一个 SAE 的训练框架，现在还挂在 OpenMOSS 的 GitHub 主页上，大家如果之后有机会训 SAE 或者其他变种的话有机会也可以试用一下。
+
+  我今天要讲的主题是 Trace Is the Interface: A Unified Paradigm for Industrialized Post-Training Systems。主要是讲讲我对于后训练系统设计上的一些认知，它需要围绕着 Trace 来做，作为一种接口串联起所有组件。关于这个如何理解我们后面会详细展开。
+]
+
 == Common Techniques in Post-Training
+
+#speaker-note[。
+  虽然今天要讲的主题是后训练系统，但是系统是为了算法而设计的，它是我们设计系统的背景和 motivation。所以我们现在来看后训练的算法是什么。
+
+  后训练与预训练和 mid training 都不太一样。它没有一种固定的算法，而更像一种算法的集合，通过这几种方法来达到让模型在广泛的下游任务上有更好的性能的目的。可能是只用 SFT，或者只用 RL，也可能是这几种方法一起用。
+
+  简单讲讲这几种算法是什么，怎么从数学上理解。
+]
+
 
 #let ro(body) = text(fill: rgb("#1e6b86"), weight: "bold", body)          // produced by rollout
 #let rq(body) = text(fill: rgb("#b4471b"), body)          // new requirement vs. the previous loss
@@ -80,6 +97,18 @@
 In practice, SFT data pipelines often filter on rewards as well, blurring the line between SFT and rejection sampling.
 
 == Common Techniques in Post-Training
+
+#speaker-note[
+  RL 其实也区别不大。
+
+  GRPO 组内的差异来估计 advantage; PPO: Critic
+
+  多数算法都会有 clip。PPO 会比较当前策略和 pi old 之间的差异，如果太高就会 clip 掉。
+
+  OPD 本质上是一种 RL。
+
+  所有算法都有这样一个采样的过程。这种采样我们在后训练的语境下一般叫做 Rollout，因为它其实不完全是我们从模型的分布上采出来某个 token，它还会包含一系列跟工具和环境的交互。这个 Rollout 的结果我们一般叫 Trajectory 或者 Trace。
+]
 
 - *RL*
 
@@ -140,6 +169,10 @@ In practice, SFT data pipelines often filter on rewards as well, blurring the li
   在 Agentic RL 的时代，Rollout 任务非常繁重。
   
   沙盒、Harness 生命周期的管理也为系统增加了挑战。
+
+  简单的场景我们可以用 Simple ReAct agent，自己带一些工具，去 parse 模型的输出然后执行。
+
+  更多的，或者更真实的，我们的模型会跑在一个 Harness 里面
 ]
 
 #text(size: 20pt)[
@@ -155,6 +188,17 @@ In practice, SFT data pipelines often filter on rewards as well, blurring the li
 ]
 
 == RL System
+
+#speaker-note[
+  我们再反过来看我们现在的流行的系统设计。
+
+  verl, slime
+
+  rollout 也有被这两个系统考虑到，AgentLoop， custom rollout generation
+
+  但是你看这边它标了 User responsibility，这边是 custom，说明 rollout 没有被系统性的考虑，实际使用时也更多是用户自己传入他们写的某个任务上的 rollout。
+  
+]
 
 #grid(
   columns: (1fr, 1fr),
@@ -175,13 +219,37 @@ Representative modern RL frameworks. Both run a controller over:
 
 == RL System
 
+#speaker-note[
+  我们现在做的事情就是系统地管理整个 rollout 的流程。我们设计的这套系统是 AvaCore。
+
+  
+]
+
 Rollout takes on a far more complex and important role in the era of Agentic RL.
 
 #align(center)[#image("AvaCore System.png", height: 85%)]
 
 == RL System
 
+#speaker-note[
+  Rollout Engine 这套抽象中，主要就是把 rollout 分成了 Generate 和 Reward 两部分
+]
+
 #align(center)[#image("AvaCore.png")]
+
+== Trace
+
+#speaker-note[
+  大家肯定有调过 OpenAI 的 API，我们调 chat completions 接口的时候，我们需要给他发送我们的对话历史，与我们能够支持的 tool schema 列表。
+
+  那么 Trace 就是这样的 messages 和 tools
+]
+
+- *Trace* = messages + tools
+- ```python Client.step(trace: Trace) -> Trace```
+- ```python GenerateFunction.__call__(instance: I) -> Trace```
+- ```python RewardFunction.__call__(trace: Trace, reference: R) -> Reward```
+- Finally, record *Trace* in database and send *Trace* for training.
 
 == Agentic Rollout
 
@@ -192,13 +260,13 @@ class Agentic(GenerateFunction[I]):
     """Run a harness inside a sandbox against a recording proxy of ``model``."""
 
     model: Client
-    harness: Harness
-    services: Sequence[Service] = ()
+    harness: Harness = Codex()
+    services: Sequence[Service] = (WSTunnel(), Mihomo())
 
     async def __call__(self, instance: I, *, sampling_params=None) -> Trace:
         async with (
             serving(instance.runtime_spec.runtime(), self.services) as runtime,
-            OpenAIProxy(self.model, sampling_params) as proxy,  # own port, own trace store
+            OpenAIProxy(self.model, sampling_params) as proxy,  # own trace store
             runtime.reach(proxy.endpoint) as endpoint,
         ):
             await self.harness.ensure(runtime)
@@ -236,6 +304,13 @@ Transferring *chat messages* breaks token identity:
 
 - No mature solution exists for the *templated string -> chat messages* conversion.
 ]
+
+== Tokens-in, Tokens-out
+
+*Solution:* Keep *tokens* as the source of truth.
+
+- Trace = messages + tools = ChatTrace | TokenTrace
+  - TokenTrace = list of Segments, Segment = list of Tokens
 
 == Trace Resolution in Black-box Harness
 
@@ -280,7 +355,7 @@ Some harnesses (like Claude Code) may also
 *Solution:*
 
 - *Whitebox the harness:*
-  - For an open-source harness (like Codex), we can modify the source code to make it *carry session ids*.
+  - For open-source harnesses (like Codex), we can modify the source code to make it *carry session ids*.
   - Drop the in-sandbox harness and use a self-controlled loop.
 
 - *Heuristic prefix matching*
@@ -292,7 +367,7 @@ Some harnesses (like Claude Code) may also
   - Do not use `httpx.AsyncClient`!
 - *Retry* over HTTP requests, sandbox actions, and low-reward results.
 - *Concurrency control* over rollout tasks and resource acquisition (like sandbox creation).
-- *Error transparency:* Faithfully record all errors, and panic on unexpected ones. Traces are saved eagerly to help find the cause of errors.
+- *Error transparency:* Faithfully propagate and record all errors, and panic on unexpected ones. Traces are saved eagerly to help find the cause of errors.
 - *Resource lifecycle:* Release all resources promptly. Allow cancellation of ongoing tasks.
 - *Audit system:* LLM-based audit to analyze the failure mode of each trace (infra issue, model issue, reward hacking, etc.).
 ]
@@ -318,7 +393,17 @@ Some harnesses (like Claude Code) may also
 *Scheduling: keep every resource busy*
 - Full utilization of training GPUs, inference GPUs, and sandboxes.
 - KV-cache hit rate.
+
+*Rollback*
+- Snapshot of (sandbox) environment.
+- Rollback to any previous point and continue rollout there.
 ]
+
+
+
+== Evaluation
+
+No difference from normal rollout. Reward is the score.
 
 == Ease of Use
 
@@ -347,11 +432,14 @@ format = '(?<=\\boxed\{)[A-Z]'
 reference = "{{ answer }}"
 ```
 ][
-  
+  Start rollout in one command:
   #show raw.where(block: true): set text(size: 13pt)
   ```sh
   avacore rollout run gpqa.toml
+  ```
 
+  Evaluation is just as simple:
+  ```sh
   avacore eval run http://localhost:30000 \
     --benchmarks aime25,gpqa_diamond --resume
   ```
