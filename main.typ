@@ -183,6 +183,33 @@ Rollout takes on a far more complex and important role in the era of Agentic RL.
 
 #align(center)[#image("AvaCore.png")]
 
+== Agentic Rollout
+
+#[
+#show raw.where(block: true): set text(size: 11.5pt)
+```python
+class Agentic(GenerateFunction[I]):
+    """Run a harness inside a sandbox against a recording proxy of ``model``."""
+
+    model: Client
+    harness: Harness
+    services: Sequence[Service] = ()
+
+    async def __call__(self, instance: I, *, sampling_params=None) -> Trace:
+        async with (
+            serving(instance.runtime_spec.runtime(), self.services) as runtime,
+            OpenAIProxy(self.model, sampling_params) as proxy,  # own port, own trace store
+            runtime.reach(proxy.endpoint) as endpoint,
+        ):
+            await self.harness.ensure(runtime)
+            await proxy.guarding(self.harness.run(
+                runtime=runtime, endpoint=endpoint,
+                cwd=instance.cwd, prompt=instance.prompt,
+            ))
+            return proxy.main_trace
+```
+]
+
 == Tokens-in, Tokens-out
 
 
